@@ -1,0 +1,169 @@
+\documentclass{article}
+
+\usepackage[margin=1in, paperwidth=8.5in, paperheight=11in]{geometry}
+
+\begin{document}
+
+\begin{titlepage}
+\begin{center}
+\vspace*{3in}
+ 
+\huge
+Math 523 Project 2
+ 
+\vspace{0.15in}
+\Large
+Xi Sun
+ 
+\vspace{0.15in}
+\today
+ 
+\vfill
+
+\end{center}
+\end{titlepage}
+
+\section{Introduction}
+
+\noindent In this project, we are going to investigate DJX option which is the symbol for options based on Daw Jones Industrial Average. The DJX index option contract is based on 1/100th of the current value of the Dow Jones Industrial Average with the current stock price \$269.22. DJX is in European style, cash-settled, no dividends, and traded on Cboe, the world's leading options marketplace. The goal of this project is to compare the actual call and put price with the prices derived according to Black-Schole-Merton theory.
+
+\section{Historical Data Analysis}
+
+\noindent In this section, some initial analysis will be done, for example, the basic statistics: mean, variance, skewness, and excess kurtosis for the daily closing value where the adjusted price will used. Also, we need to find the daily log return and see if it is stationary. Normality also needs to be checked in order to apply the Black-Scholes-Merton equation.\\
+
+\noindent First, some packages are loaded for this project.
+
+<<warning=FALSE,message=FALSE>>=
+library(quantmod)
+library(fBasics)
+@
+
+\noindent Next, the data from index option DJI is loaded from yahoo, and the adjusted price of DJI is obtained and the time series plot for the adjusted price is generated.
+
+<<message=FALSE,out.width='3in'>>=
+getSymbols("^DJI",src="yahoo",from=as.Date("2016-01-01"),to=as.Date("2019-06-28"))
+dji_adj <- DJI$DJI.Adjusted
+chartSeries(dji_adj,theme="white")
+@
+
+\noindent According to the time series plot, we can see that the stock price tends to be increasing which means it is not stationary, therefore, the log return for the adjusted price is calculated, for checking the stationary.
+
+<<out.width='3in'>>=
+logdji <- dailyReturn(dji_adj,type="log")
+chartSeries(logdji,theme="white")
+@
+
+\noindent According to the time series plot for the daily log return, we can see that it satisfies the mean reverting, and variance is almost constant, ie, the value is approximately bounded by $\pm0.04$. In order to check if it is actually being stationary, the acf plot is generated.
+
+<<out.width='3in'>>=
+acf(logdji)
+@
+
+\noindent As we can see from the acf plot, when lag=0, the acf value is very high, but starting from lag=1, the acf value tends to be very small, which means the acf value for the log return goes to 0 very fast, therefore, the log retrun appears to be stationary.\\
+
+\noindent Finally, we need to check some basic statistics for the daily log return and compare with a standard normal in order to use the Black-Scholes-Merton theory, so the results are shown below:
+
+<<>>=
+mean(logdji)
+var(logdji)
+skewness(logdji)
+kurtosis(logdji)
+@
+
+\noindent First, based on the basic statistics about mean, variance, skewness, and excess kurtosis, we can see that the mean and variance is very small that is close to 0, and skewness is approximately $-0.62$ which is a little bit skewed but acceptable. For excess kurtosis, we have approximately equals $5.011$ which is a little bit higher than 0, so in the tail part, it goes to 0 slower than the standard normal.\\
+
+<<out.width='3in'>>=
+z <- (logdji-mean(logdji))/sd(logdji)
+hist(z,breaks=50,freq=FALSE)
+curve(dnorm(x),col="red",add=TRUE)
+@
+
+\noindent Next, according to the histogram and fitted standard normal density function, we can see that the shape of the histogram is like normal, but not exactly standard normal. Anyways, in this project, we will assume it is normal, and the $\mu$ and $\sigma$ are shown below:
+
+<<>>=
+mu <- mean(logdji)
+sigma <- sd(logdji)
+mu
+sigma
+@
+
+\section{Options Analysis}
+
+\noindent In options analysis, we are going to extract 4 sets of liquid options from the index option with the same expiry. So the expiry being selected is August 16, 2019, where the gap between the target date and today is 30 business days(trading days). Therefore, we have $T-t=\frac{30}{252}$. And according to the DJX option, we have the risk-free interest rate $r=-0.0016$. So we can make a table as the following.
+
+<<>>=
+strike <- c(260,265,270,275)
+call <- c(10.98,6.02,3.05,1.14)
+put <- c(1.88,2.95,4.4,8.35)
+expiry <- 30/252
+data.frame(call,put,strike,expiry)
+@
+
+\noindent Now, we need to check the put-call parity, so we have the values: put, call, strike, and expiry mentioned above with the current stock price $s=269.22$, and risk-free interest rate $r=-0.0016$. We can obtain the following.
+
+<<>>=
+s <- 268.06
+r <- 0.0223
+lhs <- call-put
+rhs <- round(s-strike*exp(-r*expiry),2)
+lhs
+rhs
+@
+
+\noindent According to the result above by using the put-call parity formula, we can see that the difference is very small when the strike price is small and the difference is getting larger when the strike price is larger. Now, we need to use the Black-Scholes-Merton(BSM) theory to see that if the past volatility can explain the future volatility and compare with the real option price for both put and call. First, we program out our BSM formula for both put and call. And second, we are going to calculate the stock by using the BSM formula.
+
+<<>>=
+bsmcall <- function(s,k,r,tt,sigma,delta){
+  d1 <- (log(s/k)+(r-delta+0.5*sigma^2)*tt)/(sigma*sqrt(tt))
+  d2 <- d1-sigma*sqrt(tt)
+  call <- s*exp(-delta*tt)*pnorm(d1)-k*exp(-r*tt)*pnorm(d2)
+  return(call)
+}
+bsmput <- function(s,k,r,tt,sigma,delta){
+  d1 <- (log(s/k)+(r-delta+0.5*sigma^2)*tt)/(sigma*sqrt(tt))
+  d2 <- d1-sigma*sqrt(tt)
+  put <- k*exp(-r*tt)*pnorm(-d2)-s*exp(-delta*tt)*pnorm(-d1)
+  return(put)
+}
+round(bsmcall(s=s,k=strike,r=r,tt=expiry,sigma=sigma,delta=0),2)
+call
+round(bsmput(s=s,k=strike,r=r,tt=expiry,sigma=sigma,delta=0),2)
+put
+@
+
+\noindent According to the result from BSM theory, we can see that the difference between the bsmcall price and the actual call price are almost the same. It is true that the difference is somehow larger than expected, but based on the value of strike price, these difference is acceptable. Now, we plot the curve and the points so that we can see the actual pattern.
+
+<<out.width='3in'>>=
+curve(bsmcall(s=s,k=x,r=r,tt=expiry,sigma=sigma,delta=0),
+      xlim=c(258,280),ylim=c(0,12),xlab="strike price",ylab="BSM_call")
+points(strike,call,col="red")
+curve(bsmput(s=s,k=x,r=r,tt=expiry,sigma=sigma,delta=0),
+      xlim=c(258,280),xlab="strike price",ylab="BSM_put")
+points(strike,put,col="red")
+@
+
+\noindent According to both of the plots, we can see that the trend of the actual call price is satisfying the trend of the BSM theory, and when strike price gets either larger or smaller, the difference is getting smaller,which also satisfies the BSM theory since there is a peak of the difference around the current stock price. And actually, if we extend the $x$ limit from 0 to 500 for example, the points will looks like that they are almost on the curve. Therefore, we can conclude that the actual call and put price is satisfying the BSM theory.
+
+\section{Conclusion}
+
+\noindent Finally, we have several things that can be concluded. First, the historical volatility could somehow explain the future volatility, not guarantee to be the same but they should be close. Second, if the daily log return follows a standard normal distribution, then we can apply the BSM theory to get both call and put price, since the difference between the price from BSM theory and the actual price is small enough so that it could be accepted. Finally, the trend of actual put and call price follows the trend from BSM theory, and in this case, the larger or smaller the strike price is, the smaller the difference between thereotical price and actual price is.
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
